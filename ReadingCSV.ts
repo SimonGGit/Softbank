@@ -1,16 +1,15 @@
-var fs = require("fs");
-var winston = require('winston');
-
-function parseDate(input : string) : Date {
-    function rangeError(type : string) {
-        var errorMsg = "while parsing '" + input + "'. " + type + " number is not in the correct range. Line is ignored.";
+function parseDate(dateInput : string) : Date {
+    
+    function rangeError(param : string) : void {
+        var errorMsg = "while parsing '" + dateInput + "'. " + param + " number is not in the correct range. Line is ignored.";
         winston.log("error", errorMsg);
+        return null;
     }
-    var splitted : number[] = input.split("/").map(Number);
+    var splitted : number[] = dateInput.split("/").map(Number);
     var now : Date = new Date();
 
     if (splitted.length != 3) {
-        var errorMsg = "while parsing '" + input + "'. The date is incorrectly formed (not of the form #/#/#). Line is ignored.";
+        var errorMsg = "while parsing '" + dateInput + "'. The date is incorrectly formed (not of the form #/#/#). Line is ignored.";
         winston.log("error", errorMsg);
         return null;
     }
@@ -18,27 +17,28 @@ function parseDate(input : string) : Date {
     if (splitted.some(function(n) { // check if all numbers are not NaN
         return isNaN(n); 
     })) {
-        var errorMsg = "while parsing '" + input + "'. Not all values are numbers. Line is ignored.";
+        var errorMsg = "while parsing '" + dateInput + "'. Not all values are numbers. Line is ignored.";
         winston.log("error", errorMsg);
         return null;
-    }
+    };
 
     if (splitted[0] < 1 || (splitted[1] == 2 && splitted[0] > 28) || (splitted[1] in [4, 6, 9, 11] && splitted[0] > 30) || splitted[0] > 31
            || (splitted[2] == now.getFullYear() && splitted[1] == now.getMonth() + 1 && splitted[0] > now.getDate())) { // check if date is of correct 
         rangeError("day");
-    }
+    };
     if (splitted[1] < 1 || splitted[1] > 12 || (splitted[2] == now.getFullYear() && splitted[1] > now.getMonth() + 1)) { // check if month is in the correct range
         rangeError("month");
-    }
+    };
     if (splitted[2] < 1901 || splitted[2] > new Date().getFullYear()) { // check if year is in the correct range
         rangeError("year");
-    }
+    };
+
     var date = new Date();
     date.setDate(splitted[0]);
     date.setMonth(splitted[1] - 1);
     date.setFullYear(splitted[2]);
     return date;
-}
+};
 
 function addIfNotPresent(arr : any[], item : any) : void {
     if (!(item.toString() in arr)) arr[item.toString()] = item;
@@ -135,12 +135,13 @@ function loadCSV(fileName : string) {
 }
 
 
-
+var fs = require("fs");
+var winston = require("winston");
 var transactionDict : Transaction[] = new Array();
 var personDict : Person[] = new Array();
 winston.level = "debug"
-winston.add(winston.transports.File, { filename: 'logFiles/log.txt' });
-//winston.remove(winston.transports.Console);
+winston.add(winston.transports.File, { filename: 'logFiles/errorLog.log' });
+winston.remove(winston.transports.Console);
 loadCSV("res/DodgyTransactions2015.csv");
 
 
