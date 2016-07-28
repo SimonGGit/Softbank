@@ -33,15 +33,10 @@ function parseDate(input : string) : Date {
     if (splitted[2] < 1901 || splitted[2] > new Date().getFullYear()) { // check if year is in the correct range
         rangeError("year");
     }
-    var date = new Date();
-    date.setDate(splitted[0]);
-    date.setMonth(splitted[1] - 1);
-    date.setFullYear(splitted[2]);
-    return date;
-}
-
-function addIfNotPresent(arr : any[], item : any) : void {
-    if (!(item.toString() in arr)) arr[item.toString()] = item;
+    var day = splitted[0];
+    var month = splitted[1] - 1;
+    var year = splitted[2];
+    return new Date(year, month, day);
 }
 
 function handleTransaction(transaction : Transaction) : void {
