@@ -1,13 +1,44 @@
-var fs = require("fs");
+function parseDate(dateInput : string) : Date {
+    
+    function rangeError(param : string) : void {
+        var errorMsg = "while parsing '" + dateInput + "'. " + param + " number is not in the correct range. Line is ignored.";
+        winston.log("error", errorMsg);
+        return null;
+    }
+    var splitted : number[] = dateInput.split("/").map(Number);
+    var now : Date = new Date();
 
-function parseDate(input : string) : Date {
-    var splitted = input.split("/").map(Number);
+    if (splitted.length != 3) {
+        var errorMsg = "while parsing '" + dateInput + "'. The date is incorrectly formed (not of the form #/#/#). Line is ignored.";
+        winston.log("error", errorMsg);
+        return null;
+    }
+
+    if (splitted.some(function(n) { // check if all numbers are not NaN
+        return isNaN(n); 
+    })) {
+        var errorMsg = "while parsing '" + dateInput + "'. Not all values are numbers. Line is ignored.";
+        winston.log("error", errorMsg);
+        return null;
+    };
+
+    if (splitted[0] < 1 || (splitted[1] == 2 && splitted[0] > 28) || (splitted[1] in [4, 6, 9, 11] && splitted[0] > 30) || splitted[0] > 31
+           || (splitted[2] == now.getFullYear() && splitted[1] == now.getMonth() + 1 && splitted[0] > now.getDate())) { // check if date is of correct 
+        rangeError("day");
+    };
+    if (splitted[1] < 1 || splitted[1] > 12 || (splitted[2] == now.getFullYear() && splitted[1] > now.getMonth() + 1)) { // check if month is in the correct range
+        rangeError("month");
+    };
+    if (splitted[2] < 1901 || splitted[2] > new Date().getFullYear()) { // check if year is in the correct range
+        rangeError("year");
+    };
+
     var date = new Date();
     date.setDate(splitted[0]);
     date.setMonth(splitted[1] - 1);
     date.setFullYear(splitted[2]);
     return date;
-}
+};
 
 function addIfNotPresent(arr : any[], item : any) : void {
     if (!(item.toString() in arr)) arr[item.toString()] = item;
@@ -47,32 +78,6 @@ class Transaction {
     }
 }
 
-var data = fs.readFileSync("res/Transactions2014.csv", "utf8", function(err, txt) {
-    //console.log(txt);
-    return txt;
-}).split("\n");
-
-var transactionDict : Transaction[] = new Array();
-var personDict : Person[] = new Array();
-
-for (var i = 1; i < data.length; i++) {
-     var values : string[] = data[i].split(",");
-     var date : Date = parseDate(values[0]);
-     if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
-     if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
-     var origin : Person = personDict[values[1]];
-     var to : Person = personDict[values[2]];
-     var narrative : string = values[3];
-     var amount : number = parseFloat(values[4]);
-     var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
-     transactionDict.push(transaction);
-     handleTransaction(transaction);
-}
-
-
-
-
-
 function listAll() : void {
     for (var key in personDict) {
         var person : Person = personDict[key];
@@ -97,6 +102,50 @@ function listTransactions(name : string) {
         }
     }
 }
+
+function loadCSV(fileName : string) {
+    var data : string[] = fs.readFileSync(fileName, "utf8", function(err, txt) {
+        return txt;
+    }).split("\n");
+
+    for (var i = 1; i < data.length; i++) {
+        var values : string[] = data[i].split(",");
+        if (values.length != 5) {
+            var errorMsg = "line number " + i + " in file '" + fileName + "': the line only contains " + values.length + " columns instead of 5. Line is ignored";
+            winston.log("error", errorMsg);
+            continue; // skip line
+        }
+        var date : Date = parseDate(values[0]);
+        if (date === null) continue; // skip line if error while parsing;
+        if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
+        if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
+        var origin : Person = personDict[values[1]];
+        var to : Person = personDict[values[2]];
+        var narrative : string = values[3];
+        var amount : number = parseFloat(values[4]);
+        if (isNaN(amount)) {
+            var errorMsg = "line number " + i + " in file '" + fileName + "': '" + values[4] + "' is not a number. Line is ignored";
+            winston.log("error", errorMsg);
+            continue; // skip line
+        }
+        var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
+        transactionDict.push(transaction);
+        handleTransaction(transaction);
+    }
+}
+
+
+var fs = require("fs");
+var winston = require("winston");
+var transactionDict : Transaction[] = new Array();
+var personDict : Person[] = new Array();
+winston.level = "debug"
+winston.add(winston.transports.File, { filename: 'logFiles/errorLog.log' });
+winston.remove(winston.transports.Console);
+loadCSV("res/DodgyTransactions2015.csv");
+
+
+
 
 var stdin = process.stdin;
 stdin.addListener("data", function(data) {
