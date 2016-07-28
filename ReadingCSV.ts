@@ -2,7 +2,37 @@ var fs = require("fs");
 var winston = require('winston');
 
 function parseDate(input : string) : Date {
-    var splitted = input.split("/").map(Number);
+    function rangeError(type : string) {
+        var errorMsg = "while parsing '" + input + "'. " + type + " number is not in the correct range. Line is ignored.";
+        winston.log("error", errorMsg);
+    }
+    var splitted : number[] = input.split("/").map(Number);
+    var now : Date = new Date();
+
+    if (splitted.length != 3) {
+        var errorMsg = "while parsing '" + input + "'. The date is incorrectly formed (not of the form #/#/#). Line is ignored.";
+        winston.log("error", errorMsg);
+        return null;
+    }
+
+    if (splitted.some(function(n) { // check if all numbers are not NaN
+        return isNaN(n); 
+    })) {
+        var errorMsg = "while parsing '" + input + "'. Not all values are numbers. Line is ignored.";
+        winston.log("error", errorMsg);
+        return null;
+    }
+
+    if (splitted[0] < 1 || (splitted[1] == 2 && splitted[0] > 28) || (splitted[1] in [4, 6, 9, 11] && splitted[0] > 30) || splitted[0] > 31
+           || (splitted[2] == now.getFullYear() && splitted[1] == now.getMonth() + 1 && splitted[0] > now.getDate())) { // check if date is of correct 
+        rangeError("day");
+    }
+    if (splitted[1] < 1 || splitted[1] > 12 || (splitted[2] == now.getFullYear() && splitted[1] > now.getMonth() + 1)) { // check if month is in the correct range
+        rangeError("month");
+    }
+    if (splitted[2] < 1901 || splitted[2] > new Date().getFullYear()) { // check if year is in the correct range
+        rangeError("year");
+    }
     var date = new Date();
     date.setDate(splitted[0]);
     date.setMonth(splitted[1] - 1);
@@ -83,14 +113,21 @@ function loadCSV(fileName : string) {
         if (values.length != 5) {
             var errorMsg = "line number " + i + " in file '" + fileName + "': the line only contains " + values.length + " columns instead of 5. Line is ignored";
             winston.log("error", errorMsg);
+            continue; // skip line
         }
         var date : Date = parseDate(values[0]);
+        if (date === null) continue; // skip line if error while parsing;
         if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
         if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
         var origin : Person = personDict[values[1]];
         var to : Person = personDict[values[2]];
         var narrative : string = values[3];
         var amount : number = parseFloat(values[4]);
+        if (isNaN(amount)) {
+            var errorMsg = "line number " + i + " in file '" + fileName + "': '" + values[4] + "' is not a number. Line is ignored";
+            winston.log("error", errorMsg);
+            continue; // skip line
+        }
         var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
         transactionDict.push(transaction);
         handleTransaction(transaction);
