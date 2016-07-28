@@ -40,14 +40,17 @@ function parseDate(input : string) : Date {
 }
 
 function handleTransaction(transaction : Transaction) : void {
-    personDict[transaction.origin.toString()].updateBalance(-transaction.amount);
-    personDict[transaction.to.toString()].updateBalance(transaction.amount);
+    personDict[transaction.origin.toString()].addTransaction(transaction);
+    personDict[transaction.to.toString()].addTransaction(transaction);
+    transactionDict.push(transaction);
 }
 
 class Person {
     balance : number
+    transactionList : Transaction[];
     constructor(public name : string) {
         this.balance = 0;
+        this.transactionList = new Array();
     };
 
     toString() : string {
@@ -56,6 +59,11 @@ class Person {
 
     getBalance() : number {
         return this.balance;
+    }
+
+    addTransaction(transaction : Transaction) : void {
+        this.transactionList.push(transaction);
+        this.updateBalance(transaction.amount)
     }
 
     updateBalance(change : number) : void {
@@ -90,8 +98,8 @@ function listTransactions(name : string) {
         return;
     }
     console.log("The following transactions were found involving '" + name + "':");
-    for ( var i = 0; i < transactionDict.length; i++) {
-        var transaction : Transaction = transactionDict[i];
+    for (var index = 0; index < personDict[name].transactionList.length; index++) {
+        var transaction : Transaction = personDict[name].transactionList[index]
         if (transaction.origin.name === name || transaction.to.name == name) {
             console.log(transaction.toString());
         }
@@ -110,29 +118,33 @@ function loadCSV(fileName : string) {
             winston.log("error", errorMsg);
             continue; // skip line
         }
-        var date : Date = parseDate(values[0]);
-        if (date === null) continue; // skip line if error while parsing;
-        if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
-        if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
-        var origin : Person = personDict[values[1]];
-        var to : Person = personDict[values[2]];
-        var narrative : string = values[3];
-        var amount : number = parseFloat(values[4]);
-        if (isNaN(amount)) {
-            var errorMsg = "line number " + i + " in file '" + fileName + "': '" + values[4] + "' is not a number. Line is ignored";
-            winston.log("error", errorMsg);
-            continue; // skip line
-        }
-        var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
-        transactionDict.push(transaction);
+        var transaction = parseCSVTransaction(values);
+        if (transaction === null) continue; // skip this line
         handleTransaction(transaction);
     }
+}
+
+function parseCSVTransaction(values : string[]) {
+    var date : Date = parseDate(values[0]);
+    if (date === null) return null; // skip line if error while parsing;
+    if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
+    if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
+    var origin : Person = personDict[values[1]];
+    var to : Person = personDict[values[2]];
+    var narrative : string = values[3];
+    var amount : number = parseFloat(values[4]);
+    if (isNaN(amount)) {
+        var errorMsg = "while parsing: '" + values[4] + "' is not a number. Line is ignored";
+        winston.log("error", errorMsg);
+        return null; // skip line
+    }
+    return new Transaction(date, origin, to, narrative, amount);
 }
 
 
 
 var transactionDict : Transaction[] = new Array();
-var personDict : Person[] = new Array();
+var personDict = {};
 winston.level = "debug"
 winston.add(winston.transports.File, { filename: 'logFiles/log.txt' });
 //winston.remove(winston.transports.Console);
