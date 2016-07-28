@@ -1,4 +1,5 @@
 var fs = require("fs");
+var winston = require('winston');
 
 function parseDate(input : string) : Date {
     var splitted = input.split("/").map(Number);
@@ -47,32 +48,6 @@ class Transaction {
     }
 }
 
-var data = fs.readFileSync("res/Transactions2014.csv", "utf8", function(err, txt) {
-    //console.log(txt);
-    return txt;
-}).split("\n");
-
-var transactionDict : Transaction[] = new Array();
-var personDict : Person[] = new Array();
-
-for (var i = 1; i < data.length; i++) {
-     var values : string[] = data[i].split(",");
-     var date : Date = parseDate(values[0]);
-     if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
-     if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
-     var origin : Person = personDict[values[1]];
-     var to : Person = personDict[values[2]];
-     var narrative : string = values[3];
-     var amount : number = parseFloat(values[4]);
-     var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
-     transactionDict.push(transaction);
-     handleTransaction(transaction);
-}
-
-
-
-
-
 function listAll() : void {
     for (var key in personDict) {
         var person : Person = personDict[key];
@@ -97,6 +72,42 @@ function listTransactions(name : string) {
         }
     }
 }
+
+function loadCSV(fileName : string) {
+    var data : string[] = fs.readFileSync(fileName, "utf8", function(err, txt) {
+        return txt;
+    }).split("\n");
+
+    for (var i = 1; i < data.length; i++) {
+        var values : string[] = data[i].split(",");
+        if (values.length != 5) {
+            var errorMsg = "line number " + i + " in file '" + fileName + "': the line only contains " + values.length + " columns instead of 5. Line is ignored";
+            winston.log("error", errorMsg);
+        }
+        var date : Date = parseDate(values[0]);
+        if (!(values[1] in personDict)) personDict[values[1]] = new Person(values[1]);
+        if (!(values[2] in personDict)) personDict[values[2]] = new Person(values[2]);
+        var origin : Person = personDict[values[1]];
+        var to : Person = personDict[values[2]];
+        var narrative : string = values[3];
+        var amount : number = parseFloat(values[4]);
+        var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
+        transactionDict.push(transaction);
+        handleTransaction(transaction);
+    }
+}
+
+
+
+var transactionDict : Transaction[] = new Array();
+var personDict : Person[] = new Array();
+winston.level = "debug"
+winston.add(winston.transports.File, { filename: 'logFiles/log.txt' });
+//winston.remove(winston.transports.Console);
+loadCSV("res/DodgyTransactions2015.csv");
+
+
+
 
 var stdin = process.stdin;
 stdin.addListener("data", function(data) {
