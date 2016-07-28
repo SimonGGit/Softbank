@@ -1,3 +1,18 @@
+var fs = require("fs");
+var winston = require("winston");
+var Table = require("easy-table");
+
+function logTable(objArr) {
+    var t = new Table();
+    for (var objKey in objArr) {
+        for (var propertyKey in objArr[objKey]) {
+            t.cell(propertyKey, objArr[objKey][propertyKey]);
+        }
+        t.newRow();
+    }
+    console.log(t.toString());
+}
+
 function parseDate(dateInput : string) : Date {
     
     function rangeError(param : string) : void {
@@ -71,22 +86,16 @@ class Person {
 
 class Transaction {
     constructor(public date : Date, public origin : Person, public to : Person,
-                public narrative : string, public amount : number) {};
+                public narrative : string, public amount : number, public originFile : string) {};
     
     toString() : string {
-        return "Date: " + this.date.toLocaleDateString() + ", " + this.origin.toString() + " --> " + this.to.toString() + ", Description: " + this.narrative + ", Amount: " + this.amount.toString();
+        return "Date: " + this.date.toLocaleDateString() + "\t" + this.origin.toString() + " --> " + this.to.toString()
+             + "\tDescription: " + this.narrative + "\tAmount: " + this.amount.toString() + "\tOrigin File: " + this.originFile;
     }
 }
 
 function listAll() : void {
-    for (var key in personDict) {
-        var person : Person = personDict[key];
-        if (person.getBalance() < 0) {
-            console.log(person.toString() + " owes a total of " + (-person.getBalance()));
-        } else {
-            console.log(person.toString() + " is owed a total of " + person.getBalance());
-        }
-    }
+    logTable(personDict);
 }
 
 function listTransactions(name : string) {
@@ -95,15 +104,17 @@ function listTransactions(name : string) {
         return;
     }
     console.log("The following transactions were found involving '" + name + "':");
+    var transactionsPerPerson = new Array();
     for ( var i = 0; i < transactionDict.length; i++) {
         var transaction : Transaction = transactionDict[i];
         if (transaction.origin.name === name || transaction.to.name == name) {
-            console.log(transaction.toString());
+            transactionsPerPerson.push(transaction);
         }
     }
+    logTable(transactionsPerPerson);
 }
 
-function loadCSV(fileName : string) {
+function loadCSV(fileName : string) : void {
     var data : string[] = fs.readFileSync(fileName, "utf8", function(err, txt) {
         return txt;
     }).split("\n");
@@ -128,34 +139,83 @@ function loadCSV(fileName : string) {
             winston.log("error", errorMsg);
             continue; // skip line
         }
-        var transaction : Transaction = new Transaction(date, origin, to, narrative, amount);
+        var transaction : Transaction = new Transaction(date, origin, to, narrative, amount, fileName);
         transactionDict.push(transaction);
         handleTransaction(transaction);
     }
 }
 
+function loadJSON(fileName : string) : void {
+    var data : string = fs.readFileSync(fileName, "utf8", function(err, txt) {
+        return txt;
+    });
+    var objs = JSON.parse(data);
+    for (var index in objs) {
+        var date = new Date(objs[index].Date);
+        if (date.toString() === "Invalid Date") {
+            var errorMsg = "while parsing '" + objs[index].Date + "'. Line is ignored.";
+            winston.log("error", errorMsg);
+            continue;
+        }
+        var amount : number = parseFloat(objs[index].Amount);
+        if (isNaN(amount)) {
+            var errorMsg = "while parsing amount: '" + objs[index].Amount + "' is not a number. Line is ignored";
+            winston.log("error", errorMsg);
+            continue; // skip line
+        }
+        if (!(objs[index].FromAccount in personDict)) personDict[objs[index].FromAccount] = new Person(objs[index].FromAccount);
+        if (!(objs[index].ToAccount in personDict)) personDict[objs[index].ToAccount] = new Person(objs[index].ToAccount);
+        var transaction = new Transaction(date, personDict[objs[index].FromAccount], personDict[objs[index].ToAccount], objs[index].Narrative, amount, fileName)
+        transactionDict.push(transaction);
+        handleTransaction(transaction);
+    }
+}
 
-var fs = require("fs");
-var winston = require("winston");
+function loadFile(filename : string) : boolean {
+    if (fs.access(filename, (err) => { return err; })) { // if file does not exist (ie there is an err)
+        var errorMsg = "file '" + filename + "' does not exist, operation cancelled.";
+        winston.log("error", errorMsg);
+        console.log("error: " + errorMsg);
+        return false;
+    };
+    if (filename.endsWith(".csv")) loadCSV(filename);
+    else if (filename.endsWith(".json")) loadJSON(filename);
+    else {
+        var errorMsg = "file '" + filename + "' is of an unknown format, operation cancelled.";
+        winston.log("error", errorMsg);
+        console.log("error: " + errorMsg);
+        return false;
+    }
+    return true;
+}
+
 var transactionDict : Transaction[] = new Array();
-var personDict : Person[] = new Array();
-winston.level = "debug"
+var personDict = {};
+var importedFiles : string[] = new Array();
 winston.add(winston.transports.File, { filename: 'logFiles/errorLog.log' });
 winston.remove(winston.transports.Console);
-loadCSV("res/DodgyTransactions2015.csv");
 
 
 
 
 var stdin = process.stdin;
 stdin.addListener("data", function(data) {
-    var answer = data.toString().trim();
-    if (answer === "listAll") listAll()
+    var answer : string = data.toString().trim();
+    if (answer.toLowerCase() === "listall") listAll()
     else if (answer.startsWith("listTransactions")) {
         var args = answer.split(" ");
         listTransactions(args[1] + " " + args[2]);
     } else if (answer === "q" || answer === "quit") {
         throw new Error("");
+    } else if (answer.startsWith("import")) {
+        var args = answer.split(" ");
+        if (importedFiles.indexOf(args[1]) != -1) {
+            var errorMsg = "file '" + args[1] + "' has already been imported. Operation cancelled";
+            winston.log("error", errorMsg);
+            console.log("error: " + errorMsg);
+        } else {
+            if (loadFile(args[1])) importedFiles.push(args[1]);
+        }
     } else {
         console.log("Command '" + answer + "' was not found.")
     }
